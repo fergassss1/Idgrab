@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ID Grabber</title>
+    
+    <style>
+        /* SF Pro Variable Font */
+        @font-face {
+            font-family: "SF Pro";
+            src: url("https://raw.githubusercontent.com/sahibjotsaggu/San-Francisco-Pro-Fonts/master/SF-Pro.ttf") format("truetype");
+            font-display: swap;
+        }
+
+        /* SF Mono Standard Font (Static / Non-Variable) */
+        @font-face {
+            font-family: "SF Mono";
+            src: url("https://raw.githubusercontent.com/supercomputra/SF-Mono-Font/master/SFMono-Regular.otf") format("opentype");
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        :root {
+            --bg-color: #1e1e1e;
+            --card-bg: #2b2b2d;
+            --border-color: #444446;
+            --text-main: #f5f5f7;
+            --text-muted: #8e8e93;
+            --apple-red: #fa243c; /* Apple Music Red */
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: "SF Pro", -apple-system, BlinkMacSystemFont, sans-serif;
+            font-variation-settings: "opsz" 18, "wght" 400;
+            font-weight: 400;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        /* Header Title Section */
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-family: "SF Pro", -apple-system, sans-serif;
+            font-size: 42px;
+            font-weight: 590;
+            font-variation-settings: "opsz" 28, "wght" 590;
+            letter-spacing: -0.5px;
+            color: #ffffff;
+            margin-bottom: 6px;
+        }
+
+        .header p {
+            font-family: "SF Pro", -apple-system, sans-serif;
+            font-size: 15px;
+            font-weight: 400;
+            font-variation-settings: "opsz" 18, "wght" 400;
+            color: var(--text-muted);
+        }
+
+        /* Main Outer Container */
+        .main-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 28px;
+            padding: 32px;
+            width: 100%;
+            max-width: 850px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Search Inputs Row */
+        .search-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .input-wrapper {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 16px;
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            opacity: 0.8;
+            filter: invert(1);
+            transition: filter 0.2s;
+        }
+
+        .search-input {
+            width: 100%;
+            height: 52px;
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0 16px 0 48px;
+            font-family: "SF Pro", -apple-system, sans-serif;
+            font-size: 18px;
+            font-weight: 400;
+            font-variation-settings: "opsz" 18, "wght" 400;
+            color: var(--text-main);
+            outline: none;
+            transition: border-color 0.2s, color 0.2s;
+        }
+
+        .search-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* Red Highlight on Hover & Focus/Click */
+        .search-input:hover, 
+        .search-input:focus {
+            border-color: var(--apple-red);
+            color: var(--apple-red);
+        }
+
+        .input-wrapper:hover .input-icon,
+        .input-wrapper:focus-within .input-icon {
+            filter: invert(27%) sepia(91%) saturate(5412%) hue-rotate(345deg) brightness(98%) contrast(98%);
+        }
+
+        /* Storefront Selection Bar */
+        .storefront-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 24px;
+            font-size: 13px;
+            color: var(--text-muted);
+            font-variation-settings: "opsz" 18, "wght" 400;
+        }
+
+        .storefront-select {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .storefront-select:hover {
+            border-color: var(--apple-red);
+        }
+
+        /* Results Display Section */
+        .result-container {
+            display: none;
+            align-items: center;
+            gap: 20px;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .artwork {
+            width: 120px;
+            height: 120px;
+            border-radius: 20px;
+            object-fit: cover;
+            background: linear-gradient(135deg, var(--apple-red) 0%, #800000 100%);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+            flex-shrink: 0;
+        }
+
+        .song-details {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .song-title {
+            font-family: "SF Pro", -apple-system, sans-serif;
+            font-size: 28px;
+            font-weight: 590;
+            font-variation-settings: "opsz" 28, "wght" 590;
+            color: #ffffff;
+            line-height: 1.2;
+            transition: color 0.2s;
+        }
+
+        .song-title:hover {
+            color: var(--apple-red);
+        }
+
+        .song-artist {
+            font-family: "SF Pro", -apple-system, sans-serif;
+            font-size: 16px;
+            font-weight: 400;
+            font-variation-settings: "opsz" 18, "wght" 400;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            transition: color 0.2s;
+        }
+
+        .song-artist:hover {
+            color: var(--apple-red);
+        }
+
+        /* ID Pill Badge */
+        .id-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 6px 14px;
+            cursor: pointer;
+            width: fit-content;
+            transition: border-color 0.2s, background-color 0.2s;
+        }
+
+        /* Strict Static SF Mono Regular Declaration */
+        .id-pill-text {
+            font-family: "SF Mono", monospace;
+            font-weight: 400;
+            font-style: normal;
+            font-size: 14px;
+            color: var(--text-main);
+            transition: color 0.2s;
+        }
+
+        /* Turn red on hover or click */
+        .id-pill:hover,
+        .id-pill:active {
+            border-color: var(--apple-red);
+            background-color: rgba(250, 36, 60, 0.08);
+        }
+
+        .id-pill:hover .id-pill-text,
+        .id-pill:active .id-pill-text {
+            color: var(--apple-red);
+        }
+
+        .id-pill img {
+            width: 14px;
+            height: 14px;
+            filter: invert(1);
+            transition: filter 0.2s;
+        }
+
+        .id-pill:hover img {
+            filter: invert(27%) sepia(91%) saturate(5412%) hue-rotate(345deg) brightness(98%) contrast(98%);
+        }
+
+        .reload-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-family: "SF Pro", -apple-system, sans-serif;
+            font-size: 12px;
+            font-weight: 400;
+            font-variation-settings: "opsz" 18, "wght" 400;
+            cursor: pointer;
+            margin-top: 6px;
+            text-align: left;
+            width: fit-content;
+            padding: 0 4px;
+        }
+
+        .reload-btn:hover {
+            text-decoration: underline;
+            color: var(--apple-red);
+        }
+
+        .error-message {
+            color: #ff453a;
+            font-size: 14px;
+            display: none;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>ID Grabber</h1>
+        <p>Get IDs by only typing Artist and Song</p>
+    </div>
+
+    <div class="main-card">
+        <div class="search-row">
+            <div class="input-wrapper">
+                <img src="ics/note.svg" alt="Song Icon" class="input-icon">
+                <input type="text" id="song-input" class="search-input" placeholder="Song" oninput="handleSearch()">
+            </div>
+            <div class="input-wrapper">
+                <img src="ics/microphone.svg" alt="Artist Icon" class="input-icon">
+                <input type="text" id="artist-input" class="search-input" placeholder="Artist" oninput="handleSearch()">
+            </div>
+        </div>
+
+        <div class="storefront-bar">
+            <span>Storefront Region:</span>
+            <select id="storefront-select" class="storefront-select" onchange="handleSearch()">
+                <option value="us" selected>United States (us)</option>
+                <option value="gb">United Kingdom (gb)</option>
+                <option value="ca">Canada (ca)</option>
+                <option value="de">Germany (de)</option>
+                <option value="fr">France (fr)</option>
+                <option value="jp">Japan (jp)</option>
+                <option value="es">Spain (es)</option>
+                <option value="br">Brazil (br)</option>
+            </select>
+        </div>
+
+        <div id="error-box" class="error-message"></div>
+
+        <div id="result-card" class="result-container">
+            <img id="artwork-img" class="artwork" src="" alt="Album Artwork">
+            <div class="song-details">
+                <div id="res-song-title" class="song-title">Song</div>
+                <div id="res-artist-name" class="song-artist">Artist</div>
+                
+                <button class="id-pill" onclick="copySongId(this)">
+                    <span id="res-id-text" class="id-pill-text">ID: 123456789</span>
+                    <img id="copy-icon" src="ics/dod.svg" alt="Copy ID">
+                </button>
+                <button class="reload-btn" onclick="handleSearch()">Reload</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const AMP_BASE_URL = "https://amp-api.music.apple.com";
+    const AMP_TOKEN = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzc0NDU2MzgyLCJleHAiOjE3ODE3MTM5ODIsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.4n8qYF4qa18sL1E0G9A3qX35cD8wQ-IJcS9Bh8ZT8JV_yLBtVq46B-9-2ZS3EvWHuw3yK9BYFYAhAdTaDm38vQ";
+
+    let debounceTimer = null;
+    let currentCatalogId = "";
+
+    function handleSearch() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(performSearch, 400);
+    }
+
+    function showError(msg) {
+        const errorBox = document.getElementById('error-box');
+        if (msg) {
+            errorBox.innerText = msg;
+            errorBox.style.display = 'block';
+            document.getElementById('result-card').style.display = 'none';
+        } else {
+            errorBox.style.display = 'none';
+        }
+    }
+
+    async function performSearch() {
+        showError(null);
+
+        const song = document.getElementById('song-input').value.trim();
+        const artist = document.getElementById('artist-input').value.trim();
+        const storefront = document.getElementById('storefront-select').value;
+
+        if (!song && !artist) {
+            document.getElementById('result-card').style.display = 'none';
+            return;
+        }
+
+        const query = `${song} ${artist}`.trim();
+
+        try {
+            const params = new URLSearchParams({
+                term: query,
+                types: 'songs',
+                limit: '10',
+                platform: 'web',
+                'format[resources]': 'map'
+            });
+
+            const response = await fetch(`${AMP_BASE_URL}/v1/catalog/${storefront}/search?${params.toString()}`, {
+                method: "GET",
+                headers: {
+                    "Authorization": `Bearer ${AMP_TOKEN}`,
+                    "Origin": "https://music.apple.com",
+                    "Referer": "https://music.apple.com/",
+                    "Accept": "application/json"
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`AMP API Error (${response.status})`);
+            }
+
+            const data = await response.json();
+            let songs = [];
+
+            if (data?.results?.songs?.data) {
+                songs = data.results.songs.data;
+            } else if (data?.resources?.songs) {
+                songs = Object.values(data.resources.songs);
+            }
+
+            if (songs.length === 0) {
+                return showError("No catalog matches found.");
+            }
+
+            const scored = songs.map(item => {
+                const attrs = item.attributes || {};
+                const name = attrs.name || "";
+                const artistName = attrs.artistName || "";
+                let score = 0;
+
+                if (song && name.toLowerCase().includes(song.toLowerCase())) score += 20;
+                if (artist && artistName.toLowerCase().includes(artist.toLowerCase())) score += 15;
+
+                return {
+                    id: item.id,
+                    score,
+                    title: name,
+                    artist: artistName,
+                    artwork: attrs.artwork?.url ? attrs.artwork.url.replace('{w}', '240').replace('{h}', '240') : ''
+                };
+            }).sort((a, b) => b.score - a.score);
+
+            const bestMatch = scored[0];
+            currentCatalogId = bestMatch.id;
+
+            document.getElementById('res-song-title').innerText = bestMatch.title;
+            document.getElementById('res-artist-name').innerText = bestMatch.artist;
+            document.getElementById('res-id-text').innerText = `ID: ${bestMatch.id}`;
+            
+            const artworkImg = document.getElementById('artwork-img');
+            if (bestMatch.artwork) {
+                artworkImg.src = bestMatch.artwork;
+            } else {
+                artworkImg.src = "";
+            }
+
+            document.getElementById('result-card').style.display = 'flex';
+
+        } catch (err) {
+            showError("Unable to fetch song ID: " + err.message);
+        }
+    }
+
+    function copySongId(pillElement) {
+        if (!currentCatalogId) return;
+
+        navigator.clipboard.writeText(currentCatalogId).then(() => {
+            const iconImg = document.getElementById('copy-icon');
+            iconImg.src = "ics/dodf.svg";
+            
+            setTimeout(() => {
+                iconImg.src = "ics/dod.svg";
+            }, 1800);
+        });
+    }
+</script>
+
+</body>
+</html>
