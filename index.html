@@ -511,7 +511,46 @@
         }
     }
 
-    // Animated Artwork Controller Function (Static -> M3U8 -> MP4)
+    // Parse master .m3u8 playlist to pick the highest quality stream URL
+    async function resolveBestM3u8Variant(masterUrl) {
+        try {
+            const response = await fetch(masterUrl);
+            if (!response.ok) return masterUrl;
+
+            const text = await response.text();
+            const lines = text.split('\n');
+            
+            let maxBandwidth = 0;
+            let bestVariantUrl = null;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+
+                // Look for stream headers while ignoring trickplay/iframe streams
+                if (line.startsWith('#EXT-X-STREAM-INF:') && !line.includes('trickplay')) {
+                    const bandwidthMatch = line.match(/BANDWIDTH=(\d+)/);
+                    const bandwidth = bandwidthMatch ? parseInt(bandwidthMatch[1], 10) : 0;
+
+                    const nextLine = lines[i + 1] ? lines[i + 1].trim() : '';
+
+                    if (bandwidth > maxBandwidth && nextLine) {
+                        maxBandwidth = bandwidth;
+                        bestVariantUrl = nextLine;
+                    }
+                }
+            }
+
+            // Resolve relative URLs against the master URL domain
+            if (bestVariantUrl) {
+                return new URL(bestVariantUrl, masterUrl).href;
+            }
+        } catch (e) {
+            console.warn("Failed to parse master m3u8 playlist, falling back to original source:", e);
+        }
+        return masterUrl;
+    }
+
+    // Animated Artwork Controller (Static -> Master M3U8 resolution parse -> MP4)
     async function loadArtworkPipeline(staticImgUrl, m3u8Url = null, mp4Url = null) {
         const artworkImg = document.getElementById('artwork-img');
         const videoEl = document.getElementById('artwork-video');
@@ -543,17 +582,22 @@
         const supportsNativeHLS = videoEl.canPlayType('application/vnd.apple.mpegurl') !== '';
         let isVideoReady = false;
 
-        // 2. Try HLS (.m3u8) first if natively supported
+        // 2. Resolve highest resolution stream if given a master .m3u8 playlist
+        if (m3u8Url) {
+            m3u8Url = await resolveBestM3u8Variant(m3u8Url);
+        }
+
+        // 3. Try HLS (.m3u8) first if natively supported
         if (m3u8Url && supportsNativeHLS) {
             isVideoReady = await tryVideoSource(m3u8Url);
         }
 
-        // 3. Fallback to direct MP4 if HLS was unsupported or failed
+        // 4. Fallback to direct MP4 if HLS was unsupported or failed
         if (!isVideoReady && mp4Url) {
             isVideoReady = await tryVideoSource(mp4Url);
         }
 
-        // 4. Play video if ready, or fallback gracefully to static image
+        // 5. Play video if ready, or fallback gracefully to static image
         if (isVideoReady) {
             videoEl.style.display = 'block';
             videoEl.play().catch(() => {
