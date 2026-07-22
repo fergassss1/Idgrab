@@ -362,7 +362,7 @@
             // Step 1: Combined search
             let result = await this._executeSearch(`${rawTitle} ${rawArtist}`, storefront, mode, offset);
 
-            // Step 2: Fallback without parenthetical details like "(New Era)"
+            // Step 2: Fallback without parenthetical details
             if (!result && rawTitle.includes("(")) {
                 const strippedTitle = rawTitle.replace(/\([^\)]*\)/g, "").trim();
                 result = await this._executeSearch(`${strippedTitle} ${rawArtist}`, storefront, mode, offset);
@@ -389,7 +389,6 @@
                 limit: '25'
             });
 
-            // Direct call to iTunes API — no proxy needed!
             const targetUrl = `https://itunes.apple.com/search?${params.toString()}`;
 
             try {
@@ -403,12 +402,11 @@
 
                 const item = results[offset];
 
-                // High-res artwork adjustment
+                // Upscale static artwork resolution to crisp 1000x1000
                 const artworkUrl = item.artworkUrl100
-                    ? item.artworkUrl100.replace("100x100bb", "600x600bb")
+                    ? item.artworkUrl100.replace("100x100bb", "1000x1000bb")
                     : "";
 
-                // Explicit check
                 const isExplicit = (item.trackExplicitness === "explicit" || item.collectionExplicitness === "explicit");
 
                 if (mode === "album") {
@@ -418,7 +416,9 @@
                         collectionName: item.collectionName,
                         albumCoverLink: artworkUrl,
                         appleID: String(item.collectionId),
-                        isExplicit: isExplicit
+                        isExplicit: isExplicit,
+                        motionM3u8: item.motionM3u8 || null,
+                        motionMp4: item.motionMp4 || null
                     };
                 } else {
                     return {
@@ -427,7 +427,9 @@
                         collectionName: item.collectionName,
                         albumCoverLink: artworkUrl,
                         appleID: String(item.trackId),
-                        isExplicit: isExplicit
+                        isExplicit: isExplicit,
+                        motionM3u8: item.motionM3u8 || null,
+                        motionMp4: item.motionMp4 || null
                     };
                 }
             } catch (e) {
@@ -440,8 +442,9 @@
     const catalogService = new MusicCatalogAPI();
     let debounceTimer = null;
     let currentCatalogId = "";
-    let currentMode = "song";
+    let currentMode = "song"; // "song" or "album"
 
+    // Mode Switcher Controller
     function setSearchMode(mode) {
         currentMode = mode;
         
@@ -475,6 +478,58 @@
         }
     }
 
+    // Animated Artwork Controller Function (Static -> M3U8 -> MP4)
+    async function loadArtworkPipeline(staticImgUrl, m3u8Url = null, mp4Url = null) {
+        const artworkImg = document.getElementById('artwork-img');
+        const videoEl = document.getElementById('artwork-video');
+
+        // 1. Instantly set static image base
+        artworkImg.src = staticImgUrl || "";
+
+        if (!videoEl) return;
+
+        // Reset video state
+        videoEl.pause();
+        videoEl.style.display = 'none';
+
+        if (!m3u8Url && !mp4Url) {
+            videoEl.removeAttribute('src');
+            return;
+        }
+
+        // Helper to attempt loading a video source
+        const tryVideoSource = (src) => {
+            return new Promise((resolve) => {
+                videoEl.src = src;
+                videoEl.oncanplay = () => resolve(true);
+                videoEl.onerror = () => resolve(false);
+                videoEl.load();
+            });
+        };
+
+        const supportsNativeHLS = videoEl.canPlayType('application/vnd.apple.mpegurl') !== '';
+        let isVideoReady = false;
+
+        // 2. Try HLS (.m3u8) first if natively supported
+        if (m3u8Url && supportsNativeHLS) {
+            isVideoReady = await tryVideoSource(m3u8Url);
+        }
+
+        // 3. Fallback to direct MP4 if HLS was unsupported or failed
+        if (!isVideoReady && mp4Url) {
+            isVideoReady = await tryVideoSource(mp4Url);
+        }
+
+        // 4. Play video if ready, or fallback gracefully to static image
+        if (isVideoReady) {
+            videoEl.style.display = 'block';
+            videoEl.play().catch(() => {
+                // Autoplay blocked by browser policy / battery saver
+                videoEl.style.display = 'none';
+            });
+        }
+    }
+
     async function performSearch() {
         showError(null);
 
@@ -504,7 +559,7 @@
             if (!explicitIcon) {
                 explicitIcon = document.createElement('img');
                 explicitIcon.id = 'explicit-badge';
-                explicitIcon.src = 'ics/explicit.svg';
+                explicitIcon.src = 'ics/e.svg';
                 explicitIcon.style.cssText = 'width: 16px; height: 16px; margin-left: 6px; vertical-align: middle;';
             }
             titleContainer.appendChild(explicitIcon);
@@ -521,12 +576,8 @@
 
         document.getElementById('res-id-text').innerText = `ID: ${info.appleID}`;
         
-        const artworkImg = document.getElementById('artwork-img');
-        if (info.albumCoverLink) {
-            artworkImg.src = info.albumCoverLink;
-        } else {
-            artworkImg.src = "";
-        }
+        // Execute artwork display pipeline
+        loadArtworkPipeline(info.albumCoverLink, info.motionM3u8, info.motionMp4);
 
         document.getElementById('result-card').style.display = 'flex';
     }
@@ -536,11 +587,12 @@
 
         navigator.clipboard.writeText(currentCatalogId).then(() => {
             const iconImg = document.getElementById('copy-icon');
-            iconImg.src = "ics/dodf.svg";
-            
-            setTimeout(() => {
-                iconImg.src = "ics/dod.svg";
-            }, 1800);
+            if (iconImg) {
+                iconImg.src = "ics/dodf.svg";
+                setTimeout(() => {
+                    iconImg.src = "ics/dod.svg";
+                }, 1800);
+            }
         });
     }
 </script>
