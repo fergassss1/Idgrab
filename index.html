@@ -351,45 +351,171 @@
             </div>
         </div>
     </div>
-<script>
-    const AMP_BASE_URL = "https://amp-api.music.apple.com";
+    <script>
     const CORS_PROXY = "https://corsproxy.io/?";
 
-    let debounceTimer = null;
-    let currentCatalogId = "";
-    let cachedToken = null;
+    /**
+     * Manages Apple Music JWT Developer Tokens
+     */
+    class AppleTokenFetcher {
+        constructor() {
+            this.token = null;
+        }
 
-    // Fetch a fresh developer token dynamically from Apple Music to prevent 401 Expiration errors
-    async function getFreshToken() {
-        if (cachedToken) return cachedToken;
+        async getToken() {
+            if (this.token) return this.token;
 
-        try {
-            // Step 1: Fetch Apple Music web homepage
-            const mainPageUrl = CORS_PROXY + encodeURIComponent("https://music.apple.com");
-            const mainRes = await fetch(mainPageUrl);
-            const htmlText = await mainRes.text();
+            try {
+                // Retrieve token from Apple Music web app
+                const mainUrl = CORS_PROXY + encodeURIComponent("https://music.apple.com");
+                const pageRes = await fetch(mainUrl);
+                const htmlText = await pageRes.text();
 
-            // Step 2: Find the main JavaScript index asset URL
-            const jsMatch = htmlText.match(/src="(\/assets\/index-[^"]+\.js)"/);
-            if (!jsMatch) throw new Error("Could not find index JS bundle");
+                // Locate JS bundle asset
+                const jsMatch = htmlText.match(/src="(\/assets\/index-[^"]+\.js)"/);
+                if (!jsMatch) throw new Error("Could not find index bundle");
 
-            // Step 3: Fetch the JS bundle
-            const jsUrl = CORS_PROXY + encodeURIComponent("https://music.apple.com" + jsMatch[1]);
-            const jsRes = await fetch(jsUrl);
-            const jsText = await jsRes.text();
+                // Retrieve JS bundle content
+                const jsUrl = CORS_PROXY + encodeURIComponent("https://music.apple.com" + jsMatch[1]);
+                const jsRes = await fetch(jsUrl);
+                const jsText = await jsRes.text();
 
-            // Step 4: Extract the active JWT token
-            const tokenMatch = jsText.match(/eyJh[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/);
-            if (!tokenMatch) throw new Error("JWT token regex match failed");
+                // Parse JWT developer token
+                const tokenMatch = jsText.match(/eyJh[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/);
+                if (!tokenMatch) throw new Error("Token extraction failed");
 
-            cachedToken = tokenMatch[0];
-            return cachedToken;
-        } catch (err) {
-            console.warn("Dynamic token retrieval failed, using fallback token:", err);
-            // Fallback hardcoded token if dynamic scraping fails
-            return "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzc0NDU2MzgyLCJleHAiOjE3ODE3MTM5ODIsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.4n8qYF4qa18sL1E0G9A3qX35cD8wQ-IJcS9Bh8ZT8JV_yLBtVq46B-9-2ZS3EvWHuw3yK9BYFYAhAdTaDm38vQ";
+                this.token = tokenMatch[0];
+                return this.token;
+            } catch (e) {
+                console.error("Token retrieval error:", e);
+                // Hardcoded fallback token if scraping fails
+                this.token = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzc0NDU2MzgyLCJleHAiOjE3ODE3MTM5ODIsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.4n8qYF4qa18sL1E0G9A3qX35cD8wQ-IJcS9Bh8ZT8JV_yLBtVq46B-9-2ZS3EvWHuw3yK9BYFYAhAdTaDm38vQ";
+                return this.token;
+            }
+        }
+
+        clearToken() {
+            this.token = null;
         }
     }
+
+    /**
+     * Catalog & Metadata Search Engine
+     */
+    class MusicCatalogAPI {
+        constructor() {
+            this.lyricsBaseURL = "https://lyrics.paxsenix.org/";
+            this.apiBaseURL = "https://amp-api.music.apple.com/v1/catalog/";
+            this.tokenFetcher = new AppleTokenFetcher();
+        }
+
+        /**
+         * Fetch song metadata and catalog ID
+         */
+        async getSongInfo(query, storefront = "us", offset = 0) {
+            const searchString = `${query.songName || ''} ${query.artistName || ''}`.trim();
+            if (!searchString) return null;
+
+            const searchEncoded = encodeURIComponent(searchString);
+
+            const params = `term=${searchEncoded}` +
+                `&types=songs` +
+                `&limit=25` +
+                `&l=en-US` +
+                `&platform=web` +
+                `&format[resources]=map` +
+                `&include[songs]=artists` +
+                `&extend=artistUrl`;
+
+            const fullUrl = `${this.apiBaseURL}${storefront}/search?${params}`;
+
+            try {
+                let token = await this.tokenFetcher.getToken();
+
+                let response = await fetch(CORS_PROXY + encodeURIComponent(fullUrl), {
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Origin": "https://music.apple.com",
+                        "Referer": "https://music.apple.com/",
+                        "Accept": "application/json",
+                        "Accept-Language": "en-US,en;q=0.5",
+                        "x-apple-renewal": "true"
+                    }
+                });
+
+                // Automatic retry if 401 Unauthorized occurs
+                if (response.status === 401) {
+                    this.tokenFetcher.clearToken();
+                    token = await this.tokenFetcher.getToken();
+                    response = await fetch(CORS_PROXY + encodeURIComponent(fullUrl), {
+                        method: "GET",
+                        headers: {
+                            "Authorization": `Bearer ${token}`,
+                            "Origin": "https://music.apple.com",
+                            "Referer": "https://music.apple.com/",
+                            "Accept": "application/json",
+                            "Accept-Language": "en-US,en;q=0.5",
+                            "x-apple-renewal": "true"
+                        }
+                    });
+                }
+
+                if (!response.ok) return null;
+
+                const searchResponse = await response.json();
+
+                let songs = [];
+                if (searchResponse?.results?.songs?.data) {
+                    songs = searchResponse.results.songs.data;
+                } else if (searchResponse?.resources?.songs) {
+                    songs = Object.values(searchResponse.resources.songs);
+                }
+
+                if (!songs || offset >= songs.length) return null;
+
+                const songId = songs[offset].id;
+                const songDetail = searchResponse?.resources?.songs?.[songId] || songs[offset];
+                const attributes = songDetail.attributes;
+
+                if (!attributes) return null;
+
+                const artworkUrl = attributes.artwork?.url
+                    ? attributes.artwork.url.replace("{w}", "240").replace("{h}", "240").replace("{f}", "png")
+                    : "";
+
+                return {
+                    songName: attributes.name,
+                    artistName: attributes.artistName,
+                    songLink: attributes.url,
+                    albumCoverLink: artworkUrl,
+                    appleID: songId
+                };
+            } catch (e) {
+                console.error("API Fetch Error:", e);
+                return null;
+            }
+        }
+
+        /**
+         * Optional: Fetch synced lyrics file if needed
+         */
+        async getSyncedLyrics(id) {
+            try {
+                const url = `${this.lyricsBaseURL}apple-music/lyrics?id=${id}`;
+                const response = await fetch(CORS_PROXY + encodeURIComponent(url));
+                if (!response.ok) return null;
+                return await response.text();
+            } catch (e) {
+                return null;
+            }
+        }
+    }
+
+    // Initialize UI Event Logic
+    const catalogService = new MusicCatalogAPI();
+    let debounceTimer = null;
+    let currentCatalogId = "";
 
     function handleSearch() {
         clearTimeout(debounceTimer);
@@ -410,95 +536,35 @@
     async function performSearch() {
         showError(null);
 
-        const song = document.getElementById('song-input').value.trim();
-        const artist = document.getElementById('artist-input').value.trim();
+        const songName = document.getElementById('song-input').value.trim();
+        const artistName = document.getElementById('artist-input').value.trim();
         const storefront = document.getElementById('storefront-select').value;
 
-        if (!song && !artist) {
+        if (!songName && !artistName) {
             document.getElementById('result-card').style.display = 'none';
             return;
         }
 
-        const query = `${song} ${artist}`.trim();
+        const songInfo = await catalogService.getSongInfo({ songName, artistName }, storefront);
 
-        try {
-            // Retrieve valid token
-            const token = await getFreshToken();
-
-            const params = new URLSearchParams({
-                term: query,
-                types: 'songs',
-                limit: '10',
-                platform: 'web',
-                'format[resources]': 'map'
-            });
-
-            const targetUrl = `${AMP_BASE_URL}/v1/catalog/${storefront}/search?${params.toString()}`;
-            
-            const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Accept": "application/json"
-                }
-            });
-
-            if (!response.ok) {
-                // Reset token cache if 401 happens so it auto-refreshes on next query
-                if (response.status === 401) cachedToken = null;
-                throw new Error(`AMP API Error (${response.status})`);
-            }
-
-            const data = await response.json();
-            let songs = [];
-
-            if (data?.results?.songs?.data) {
-                songs = data.results.songs.data;
-            } else if (data?.resources?.songs) {
-                songs = Object.values(data.resources.songs);
-            }
-
-            if (songs.length === 0) {
-                return showError("No catalog matches found.");
-            }
-
-            const scored = songs.map(item => {
-                const attrs = item.attributes || {};
-                const name = attrs.name || "";
-                const artistName = attrs.artistName || "";
-                let score = 0;
-
-                if (song && name.toLowerCase().includes(song.toLowerCase())) score += 20;
-                if (artist && artistName.toLowerCase().includes(artist.toLowerCase())) score += 15;
-
-                return {
-                    id: item.id,
-                    score,
-                    title: name,
-                    artist: artistName,
-                    artwork: attrs.artwork?.url ? attrs.artwork.url.replace('{w}', '240').replace('{h}', '240') : ''
-                };
-            }).sort((a, b) => b.score - a.score);
-
-            const bestMatch = scored[0];
-            currentCatalogId = bestMatch.id;
-
-            document.getElementById('res-song-title').innerText = bestMatch.title;
-            document.getElementById('res-artist-name').innerText = bestMatch.artist;
-            document.getElementById('res-id-text').innerText = `ID: ${bestMatch.id}`;
-            
-            const artworkImg = document.getElementById('artwork-img');
-            if (bestMatch.artwork) {
-                artworkImg.src = bestMatch.artwork;
-            } else {
-                artworkImg.src = "";
-            }
-
-            document.getElementById('result-card').style.display = 'flex';
-
-        } catch (err) {
-            showError("Unable to fetch song ID: " + err.message);
+        if (!songInfo) {
+            return showError("No song match found or request failed.");
         }
+
+        currentCatalogId = songInfo.appleID;
+
+        document.getElementById('res-song-title').innerText = songInfo.songName;
+        document.getElementById('res-artist-name').innerText = songInfo.artistName;
+        document.getElementById('res-id-text').innerText = `ID: ${songInfo.appleID}`;
+        
+        const artworkImg = document.getElementById('artwork-img');
+        if (songInfo.albumCoverLink) {
+            artworkImg.src = songInfo.albumCoverLink;
+        } else {
+            artworkImg.src = "";
+        }
+
+        document.getElementById('result-card').style.display = 'flex';
     }
 
     function copySongId(pillElement) {
@@ -513,6 +579,6 @@
             }, 1800);
         });
     }
-</script>
+    </script>
 </body>
 </html>
