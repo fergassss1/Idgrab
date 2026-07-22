@@ -351,171 +351,113 @@
             </div>
         </div>
     </div>
-    <script>
-    const CORS_PROXY = "https://corsproxy.io/?";
-
-    /**
-     * Manages Apple Music JWT Developer Tokens
-     */
-    class AppleTokenFetcher {
-        constructor() {
-            this.token = null;
-        }
-
-        async getToken() {
-            if (this.token) return this.token;
-
-            try {
-                // Retrieve token from Apple Music web app
-                const mainUrl = CORS_PROXY + encodeURIComponent("https://music.apple.com");
-                const pageRes = await fetch(mainUrl);
-                const htmlText = await pageRes.text();
-
-                // Locate JS bundle asset
-                const jsMatch = htmlText.match(/src="(\/assets\/index-[^"]+\.js)"/);
-                if (!jsMatch) throw new Error("Could not find index bundle");
-
-                // Retrieve JS bundle content
-                const jsUrl = CORS_PROXY + encodeURIComponent("https://music.apple.com" + jsMatch[1]);
-                const jsRes = await fetch(jsUrl);
-                const jsText = await jsRes.text();
-
-                // Parse JWT developer token
-                const tokenMatch = jsText.match(/eyJh[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/);
-                if (!tokenMatch) throw new Error("Token extraction failed");
-
-                this.token = tokenMatch[0];
-                return this.token;
-            } catch (e) {
-                console.error("Token retrieval error:", e);
-                // Hardcoded fallback token if scraping fails
-                this.token = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzc0NDU2MzgyLCJleHAiOjE3ODE3MTM5ODIsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.4n8qYF4qa18sL1E0G9A3qX35cD8wQ-IJcS9Bh8ZT8JV_yLBtVq46B-9-2ZS3EvWHuw3yK9BYFYAhAdTaDm38vQ";
-                return this.token;
-            }
-        }
-
-        clearToken() {
-            this.token = null;
-        }
-    }
-
-    /**
-     * Catalog & Metadata Search Engine
-     */
+<script>
     class MusicCatalogAPI {
-        constructor() {
-            this.lyricsBaseURL = "https://lyrics.paxsenix.org/";
-            this.apiBaseURL = "https://amp-api.music.apple.com/v1/catalog/";
-            this.tokenFetcher = new AppleTokenFetcher();
+        async getCatalogInfo(query, storefront = "us", mode = "song", offset = 0) {
+            const rawTitle = (query.title || '').trim();
+            const rawArtist = (query.artistName || '').trim();
+
+            if (!rawTitle && !rawArtist) return null;
+
+            // Step 1: Combined search
+            let result = await this._executeSearch(`${rawTitle} ${rawArtist}`, storefront, mode, offset);
+
+            // Step 2: Fallback without parenthetical details like "(New Era)"
+            if (!result && rawTitle.includes("(")) {
+                const strippedTitle = rawTitle.replace(/\([^\)]*\)/g, "").trim();
+                result = await this._executeSearch(`${strippedTitle} ${rawArtist}`, storefront, mode, offset);
+            }
+
+            // Step 3: Title fallback
+            if (!result && rawTitle) {
+                result = await this._executeSearch(rawTitle, storefront, mode, offset);
+            }
+
+            return result;
         }
 
-        /**
-         * Fetch song metadata and catalog ID
-         */
-        async getSongInfo(query, storefront = "us", offset = 0) {
-            const searchString = `${query.songName || ''} ${query.artistName || ''}`.trim();
-            if (!searchString) return null;
+        async _executeSearch(searchTerm, storefront, mode, offset) {
+            if (!searchTerm.trim()) return null;
 
-            const searchEncoded = encodeURIComponent(searchString);
+            const entity = mode === "album" ? "album" : "song";
 
-            const params = `term=${searchEncoded}` +
-                `&types=songs` +
-                `&limit=25` +
-                `&l=en-US` +
-                `&platform=web` +
-                `&format[resources]=map` +
-                `&include[songs]=artists` +
-                `&extend=artistUrl`;
+            const params = new URLSearchParams({
+                term: searchTerm.trim(),
+                country: storefront || 'us',
+                media: 'music',
+                entity: entity,
+                limit: '25'
+            });
 
-            const fullUrl = `${this.apiBaseURL}${storefront}/search?${params}`;
+            // Direct call to iTunes API — no proxy needed!
+            const targetUrl = `https://itunes.apple.com/search?${params.toString()}`;
 
             try {
-                let token = await this.tokenFetcher.getToken();
-
-                let response = await fetch(CORS_PROXY + encodeURIComponent(fullUrl), {
-                    method: "GET",
-                    headers: {
-                        "Authorization": `Bearer ${token}`,
-                        "Origin": "https://music.apple.com",
-                        "Referer": "https://music.apple.com/",
-                        "Accept": "application/json",
-                        "Accept-Language": "en-US,en;q=0.5",
-                        "x-apple-renewal": "true"
-                    }
-                });
-
-                // Automatic retry if 401 Unauthorized occurs
-                if (response.status === 401) {
-                    this.tokenFetcher.clearToken();
-                    token = await this.tokenFetcher.getToken();
-                    response = await fetch(CORS_PROXY + encodeURIComponent(fullUrl), {
-                        method: "GET",
-                        headers: {
-                            "Authorization": `Bearer ${token}`,
-                            "Origin": "https://music.apple.com",
-                            "Referer": "https://music.apple.com/",
-                            "Accept": "application/json",
-                            "Accept-Language": "en-US,en;q=0.5",
-                            "x-apple-renewal": "true"
-                        }
-                    });
-                }
-
+                const response = await fetch(targetUrl);
                 if (!response.ok) return null;
 
-                const searchResponse = await response.json();
+                const data = await response.json();
+                const results = data.results || [];
 
-                let songs = [];
-                if (searchResponse?.results?.songs?.data) {
-                    songs = searchResponse.results.songs.data;
-                } else if (searchResponse?.resources?.songs) {
-                    songs = Object.values(searchResponse.resources.songs);
-                }
+                if (results.length === 0 || offset >= results.length) return null;
 
-                if (!songs || offset >= songs.length) return null;
+                const item = results[offset];
 
-                const songId = songs[offset].id;
-                const songDetail = searchResponse?.resources?.songs?.[songId] || songs[offset];
-                const attributes = songDetail.attributes;
-
-                if (!attributes) return null;
-
-                const artworkUrl = attributes.artwork?.url
-                    ? attributes.artwork.url.replace("{w}", "240").replace("{h}", "240").replace("{f}", "png")
+                // High-res artwork adjustment
+                const artworkUrl = item.artworkUrl100
+                    ? item.artworkUrl100.replace("100x100bb", "600x600bb")
                     : "";
 
-                return {
-                    songName: attributes.name,
-                    artistName: attributes.artistName,
-                    songLink: attributes.url,
-                    albumCoverLink: artworkUrl,
-                    appleID: songId
-                };
-            } catch (e) {
-                console.error("API Fetch Error:", e);
-                return null;
-            }
-        }
+                // Explicit check
+                const isExplicit = (item.trackExplicitness === "explicit" || item.collectionExplicitness === "explicit");
 
-        /**
-         * Optional: Fetch synced lyrics file if needed
-         */
-        async getSyncedLyrics(id) {
-            try {
-                const url = `${this.lyricsBaseURL}apple-music/lyrics?id=${id}`;
-                const response = await fetch(CORS_PROXY + encodeURIComponent(url));
-                if (!response.ok) return null;
-                return await response.text();
+                if (mode === "album") {
+                    return {
+                        title: item.collectionName,
+                        artistName: item.artistName,
+                        collectionName: item.collectionName,
+                        albumCoverLink: artworkUrl,
+                        appleID: String(item.collectionId),
+                        isExplicit: isExplicit
+                    };
+                } else {
+                    return {
+                        title: item.trackName,
+                        artistName: item.artistName,
+                        collectionName: item.collectionName,
+                        albumCoverLink: artworkUrl,
+                        appleID: String(item.trackId),
+                        isExplicit: isExplicit
+                    };
+                }
             } catch (e) {
+                console.error("iTunes Search API Error:", e);
                 return null;
             }
         }
     }
 
-    // Initialize UI Event Logic
     const catalogService = new MusicCatalogAPI();
     let debounceTimer = null;
     let currentCatalogId = "";
+    let currentMode = "song";
+
+    function setSearchMode(mode) {
+        currentMode = mode;
+        
+        const songInput = document.getElementById('song-input');
+        const searchIcon = document.getElementById('song-input-icon');
+
+        if (mode === "album") {
+            songInput.placeholder = "Album";
+            if (searchIcon) searchIcon.src = "ics/album.svg";
+        } else {
+            songInput.placeholder = "Song";
+            if (searchIcon) searchIcon.src = "ics/note.svg";
+        }
+
+        handleSearch();
+    }
 
     function handleSearch() {
         clearTimeout(debounceTimer);
@@ -536,30 +478,52 @@
     async function performSearch() {
         showError(null);
 
-        const songName = document.getElementById('song-input').value.trim();
+        const title = document.getElementById('song-input').value.trim();
         const artistName = document.getElementById('artist-input').value.trim();
         const storefront = document.getElementById('storefront-select').value;
 
-        if (!songName && !artistName) {
+        if (!title && !artistName) {
             document.getElementById('result-card').style.display = 'none';
             return;
         }
 
-        const songInfo = await catalogService.getSongInfo({ songName, artistName }, storefront);
+        const info = await catalogService.getCatalogInfo({ title, artistName }, storefront, currentMode);
 
-        if (!songInfo) {
-            return showError("No song match found or request failed.");
+        if (!info) {
+            return showError("No catalog matches found.");
         }
 
-        currentCatalogId = songInfo.appleID;
+        currentCatalogId = info.appleID;
 
-        document.getElementById('res-song-title').innerText = songInfo.songName;
-        document.getElementById('res-artist-name').innerText = songInfo.artistName;
-        document.getElementById('res-id-text').innerText = `ID: ${songInfo.appleID}`;
+        // Render Title + Explicit Badge
+        const titleContainer = document.getElementById('res-song-title');
+        titleContainer.innerText = info.title;
+        
+        let explicitIcon = document.getElementById('explicit-badge');
+        if (info.isExplicit) {
+            if (!explicitIcon) {
+                explicitIcon = document.createElement('img');
+                explicitIcon.id = 'explicit-badge';
+                explicitIcon.src = 'ics/explicit.svg';
+                explicitIcon.style.cssText = 'width: 16px; height: 16px; margin-left: 6px; vertical-align: middle;';
+            }
+            titleContainer.appendChild(explicitIcon);
+        } else if (explicitIcon) {
+            explicitIcon.remove();
+        }
+
+        // Render Artist Name • Collection Name
+        if (info.collectionName && info.collectionName !== info.title) {
+            document.getElementById('res-artist-name').innerText = `${info.artistName} • ${info.collectionName}`;
+        } else {
+            document.getElementById('res-artist-name').innerText = info.artistName;
+        }
+
+        document.getElementById('res-id-text').innerText = `ID: ${info.appleID}`;
         
         const artworkImg = document.getElementById('artwork-img');
-        if (songInfo.albumCoverLink) {
-            artworkImg.src = songInfo.albumCoverLink;
+        if (info.albumCoverLink) {
+            artworkImg.src = info.albumCoverLink;
         } else {
             artworkImg.src = "";
         }
@@ -579,6 +543,6 @@
             }, 1800);
         });
     }
-    </script>
+</script>
 </body>
 </html>
