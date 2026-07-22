@@ -353,13 +353,43 @@
     </div>
 <script>
     const AMP_BASE_URL = "https://amp-api.music.apple.com";
-    const AMP_TOKEN = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzc0NDU2MzgyLCJleHAiOjE3ODE3MTM5ODIsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.4n8qYF4qa18sL1E0G9A3qX35cD8wQ-IJcS9Bh8ZT8JV_yLBtVq46B-9-2ZS3EvWHuw3yK9BYFYAhAdTaDm38vQ";
-    
-    // CORS Proxy prefix to allow browser requests on GitHub Pages
     const CORS_PROXY = "https://corsproxy.io/?";
 
     let debounceTimer = null;
     let currentCatalogId = "";
+    let cachedToken = null;
+
+    // Fetch a fresh developer token dynamically from Apple Music to prevent 401 Expiration errors
+    async function getFreshToken() {
+        if (cachedToken) return cachedToken;
+
+        try {
+            // Step 1: Fetch Apple Music web homepage
+            const mainPageUrl = CORS_PROXY + encodeURIComponent("https://music.apple.com");
+            const mainRes = await fetch(mainPageUrl);
+            const htmlText = await mainRes.text();
+
+            // Step 2: Find the main JavaScript index asset URL
+            const jsMatch = htmlText.match(/src="(\/assets\/index-[^"]+\.js)"/);
+            if (!jsMatch) throw new Error("Could not find index JS bundle");
+
+            // Step 3: Fetch the JS bundle
+            const jsUrl = CORS_PROXY + encodeURIComponent("https://music.apple.com" + jsMatch[1]);
+            const jsRes = await fetch(jsUrl);
+            const jsText = await jsRes.text();
+
+            // Step 4: Extract the active JWT token
+            const tokenMatch = jsText.match(/eyJh[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/);
+            if (!tokenMatch) throw new Error("JWT token regex match failed");
+
+            cachedToken = tokenMatch[0];
+            return cachedToken;
+        } catch (err) {
+            console.warn("Dynamic token retrieval failed, using fallback token:", err);
+            // Fallback hardcoded token if dynamic scraping fails
+            return "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzc0NDU2MzgyLCJleHAiOjE3ODE3MTM5ODIsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.4n8qYF4qa18sL1E0G9A3qX35cD8wQ-IJcS9Bh8ZT8JV_yLBtVq46B-9-2ZS3EvWHuw3yK9BYFYAhAdTaDm38vQ";
+        }
+    }
 
     function handleSearch() {
         clearTimeout(debounceTimer);
@@ -392,6 +422,9 @@
         const query = `${song} ${artist}`.trim();
 
         try {
+            // Retrieve valid token
+            const token = await getFreshToken();
+
             const params = new URLSearchParams({
                 term: query,
                 types: 'songs',
@@ -402,16 +435,17 @@
 
             const targetUrl = `${AMP_BASE_URL}/v1/catalog/${storefront}/search?${params.toString()}`;
             
-            // Call via CORS Proxy to bypass browser cross-origin blocks
             const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
                 method: "GET",
                 headers: {
-                    "Authorization": `Bearer ${AMP_TOKEN}`,
+                    "Authorization": `Bearer ${token}`,
                     "Accept": "application/json"
                 }
             });
 
             if (!response.ok) {
+                // Reset token cache if 401 happens so it auto-refreshes on next query
+                if (response.status === 401) cachedToken = null;
                 throw new Error(`AMP API Error (${response.status})`);
             }
 
