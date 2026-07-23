@@ -21,6 +21,45 @@
             font-style: normal;
             font-display: swap;
         }
+
+        #song-input-icon {
+    filter: brightness(0) invert(1);
+    transition: transform 0.2s ease, filter 0.2s ease;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+#song-input-icon:hover {
+    transform: scale(1.15);
+}
+
+.input-wrapper:hover #song-input-icon,
+.input-wrapper:focus-within #song-input-icon {
+    filter: invert(27%) sepia(91%) saturate(5412%) hue-rotate(345deg) brightness(98%) contrast(98%);
+}
+
+@keyframes copyToRed {
+    0% {
+        filter: brightness(0) invert(1);
+        transform: scale(1);
+    }
+    30% {
+        filter: invert(27%) sepia(85%) saturate(5421%) hue-rotate(350deg) brightness(98%) contrast(105%);
+        transform: scale(1.25);
+    }
+    80% {
+        filter: invert(27%) sepia(85%) saturate(5421%) hue-rotate(350deg) brightness(98%) contrast(105%);
+        transform: scale(1);
+    }
+    100% {
+        filter: brightness(0) invert(1);
+        transform: scale(1);
+    }
+}
+
+.mode-animated {
+    animation: modeToRed 0.6s ease-in-out forwards;
+}
         
         #copy-icon {
             filter: brightness(0) invert(1);
@@ -666,21 +705,27 @@
 
     // Click icon handler to toggle modes seamlessly
     function toggleSearchMode() {
-        currentMode = (currentMode === "song") ? "album" : "song";
+    currentMode = (currentMode === "song") ? "album" : "song";
 
-        const songInput = document.getElementById('song-input');
-        const searchIcon = document.getElementById('song-input-icon');
+    const songInput = document.getElementById('song-input');
+    const searchIcon = document.getElementById('song-input-icon');
 
-        if (currentMode === "album") {
-            songInput.placeholder = "Album";
-            if (searchIcon) searchIcon.src = "ics/album.svg";
-        } else {
-            songInput.placeholder = "Song";
-            if (searchIcon) searchIcon.src = "ics/note.svg";
-        }
-
-        handleSearch();
+    if (currentMode === "album") {
+        songInput.placeholder = "Album";
+        if (searchIcon) searchIcon.src = "ics/album.svg";
+    } else {
+        songInput.placeholder = "Song";
+        if (searchIcon) searchIcon.src = "ics/note.svg";
     }
+
+    if (searchIcon) {
+        searchIcon.classList.remove('mode-animated');
+        void searchIcon.offsetWidth;
+        searchIcon.classList.add('mode-animated');
+    }
+
+    handleSearch();
+}
 
     function handleSearch() {
         clearTimeout(debounceTimer);
