@@ -22,7 +22,7 @@
             font-display: swap;
         }
 
-        #song-input-icon {
+#song-input-icon {
     filter: brightness(0) invert(1);
     transition: transform 0.2s ease, filter 0.2s ease;
     cursor: pointer;
@@ -35,7 +35,7 @@
 
 .input-wrapper:hover #song-input-icon,
 .input-wrapper:focus-within #song-input-icon {
-    filter: invert(21%) sepia(100%) saturate(7414%) hue-rotate(348deg) brightness(98%) contrast(103%);
+    filter: brightness(0) saturate(100%) invert(23%) sepia(89%) saturate(4978%) hue-rotate(343deg) brightness(99%) contrast(97%);
 }
 
 @keyframes copyToRed {
@@ -44,11 +44,11 @@
         transform: scale(1);
     }
     30% {
-        filter: invert(21%) sepia(100%) saturate(7414%) hue-rotate(348deg) brightness(98%) contrast(103%);
+        filter: brightness(0) saturate(100%) invert(23%) sepia(89%) saturate(4978%) hue-rotate(343deg) brightness(99%) contrast(97%);
         transform: scale(1.25);
     }
     80% {
-        filter: invert(21%) sepia(100%) saturate(7414%) hue-rotate(348deg) brightness(98%) contrast(103%);
+        filter: brightness(0) saturate(100%) invert(23%) sepia(89%) saturate(4978%) hue-rotate(343deg) brightness(99%) contrast(97%);
         transform: scale(1);
     }
     100% {
@@ -59,8 +59,7 @@
 
 .copy-animated {
     animation: copyToRed 0.6s ease-in-out forwards;
-}
-        
+}     
         #copy-icon {
             filter: brightness(0) invert(1);
             transition: transform 0.2s ease;
@@ -719,9 +718,9 @@
     }
 
     if (searchIcon) {
-        searchIcon.classList.remove('mode-animated');
+        searchIcon.classList.remove('copy-animated');
         void searchIcon.offsetWidth;
-        searchIcon.classList.add('mode-animated');
+        searchIcon.classList.add('copy-animated');
     }
 
     handleSearch();
